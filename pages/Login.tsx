@@ -1,5 +1,4 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
 
 interface LoginProps {
   onLogin: () => void;
@@ -28,8 +27,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       <div className="w-full max-w-[520px] bg-white rounded-[40px] relative z-10 shadow-xl p-12 md:p-16 border border-white/60">
         
         <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-brand-yellow mb-6 text-brand-text shadow-sm">
-            <Sparkles size={48} className="fill-brand-text text-brand-text" />
+          <div className="flex justify-center mb-6">
+            <img src="/logo.png" alt="Rulesome AI Portal Logo" className="w-24 h-24 rounded-full object-cover" />
           </div>
           <h1 className="text-3xl font-bold text-brand-text mb-3 tracking-tight">Rulesome AI Portal</h1>
           <p className="text-slate-400 text-sm font-bold tracking-wide">ルーサムAI ポータル</p>

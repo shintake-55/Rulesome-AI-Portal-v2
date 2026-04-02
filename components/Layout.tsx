@@ -362,9 +362,7 @@ export const Layout: React.FC<LayoutProps> = ({
           <div className="flex items-center font-bold text-xl tracking-tight">
              {/* Desktop Logo (Visible only on md+) */}
              <div className="hidden md:flex items-center">
-                 <span className="w-10 h-10 bg-brand-text rounded-full flex items-center justify-center mr-3 text-brand-yellow shadow-sm">
-                    <span className="material-symbols-outlined text-2xl">auto_awesome</span>
-                 </span>
+                 <img src="/logo-main.png" alt="Rulesome AI Portal Logo" className="w-10 h-10 rounded-full object-cover mr-3" />
                  <span className="text-brand-text text-lg">Rulesome AI Portal</span>
              </div>
           </div>
@@ -442,9 +440,7 @@ export const Layout: React.FC<LayoutProps> = ({
             </button>
             {/* Mobile Logo (Visible only on small screens) */}
             <div className="flex md:hidden items-center text-brand-text font-bold text-lg tracking-tight">
-               <span className="w-8 h-8 bg-brand-yellow rounded-full flex items-center justify-center mr-2 text-brand-text shadow-sm">
-                 <span className="material-symbols-outlined text-lg">auto_awesome</span>
-               </span>
+               <img src="/logo-main.png" alt="Rulesome AI Portal Logo" className="w-8 h-8 rounded-full object-cover mr-2" />
                <span>Rulesome AI Portal</span>
             </div>
           </div>
