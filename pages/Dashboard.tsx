@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { GlassPanel } from '../components/ui';
+import { GlassPanel, Button } from '../components/ui';
 import { 
   BarChart2, FileText, Star, Users, ArrowUpRight, ArrowDownRight, 
   Bot, Sparkles, User as UserIcon, ChevronRight, Download, Loader2, MessageSquare, Zap, Building2, Search,
@@ -9,6 +9,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, Sector
 } from 'recharts';
+import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import {
   companies, kpiData, timeSeriesData, popularAIs, activeUsers,
   tokenUsage, aiMessageRatio, userDetailsMap, allAIs
@@ -33,6 +34,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
   const [hoveredPieIndex, setHoveredPieIndex] = useState<number | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
   const [filterType, setFilterType] = useState<'All' | 'Basic' | 'Custom'>('All');
+
+  // Viewport states for animations
+  const [isTrendInView, setIsTrendInView] = useState(false);
+  const [isTokenInView, setIsTokenInView] = useState(false);
+  const [isRatioInView, setIsRatioInView] = useState(false);
+  const [isUserDetailsInView, setIsUserDetailsInView] = useState(false);
 
   const sortedAndFilteredAIs = useMemo(() => {
     let filtered = [...allAIs];
@@ -70,12 +77,135 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
     setSortConfig({ key, direction });
   };
 
+  const exportToCSV = () => {
+    // 1. KPI Data
+    const kpiHeaders = ['KPI', '値'];
+    const kpiRows = [
+      ['総会話数', kpiData.totalConversations],
+      ['総メッセージ数', kpiData.totalMessages],
+      ['トークン使用量', kpiData.totalTokens],
+      ['アクティブユーザー率', `${kpiData.activeUserRate}%`],
+    ];
+
+    // 2. AI Employee Data
+    const aiHeaders = ['AI社員名', 'カテゴリ', '会話数', 'メッセージ数', '平均対話回数', 'トークン使用量'];
+    const aiRows = allAIs.map(ai => [
+      ai.name,
+      ai.type === 'Basic' ? 'ベーシック' : 'カスタム',
+      ai.conversations,
+      ai.messages,
+      (ai.messages / ai.conversations).toFixed(1),
+      ai.tokens
+    ]);
+
+    // 3. User Data
+    const userHeaders = ['ユーザー名', 'メールアドレス', '総メッセージ数', '総会話数', 'よく使うAI'];
+    const userRows = activeUsers.map(user => {
+      const detail = userDetailsMap[user.id];
+      return [
+        user.name,
+        user.email,
+        detail?.totalMessages || 0,
+        detail?.totalConversations || 0,
+        detail?.mostUsedAI || 'N/A'
+      ];
+    });
+
+    // Combine all
+    let csvContent = '\uFEFF'; // BOM for Excel
+    
+    csvContent += '【KPIサマリー (直近1ヶ月)】\n';
+    csvContent += kpiHeaders.join(',') + '\n';
+    kpiRows.forEach(row => { csvContent += row.join(',') + '\n'; });
+    csvContent += '\n';
+
+    csvContent += '【AI社員 利用状況 (直近1ヶ月)】\n';
+    csvContent += aiHeaders.join(',') + '\n';
+    aiRows.forEach(row => { csvContent += row.join(',') + '\n'; });
+    csvContent += '\n';
+
+    csvContent += '【ユーザー別 利用状況 (直近1ヶ月)】\n';
+    csvContent += userHeaders.join(',') + '\n';
+    userRows.forEach(row => { csvContent += row.join(',') + '\n'; });
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const dateStr = new Date().toISOString().split('T')[0];
+    link.setAttribute('download', `dashboard_export_${dateStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Filter timeSeriesData based on selected AI (mocking the filter for now)
   const currentChartData = timeSeriesData[activeTab].map(data => ({
     ...data,
     conversations: selectedAIForTrend === 'all' ? data.conversations : Math.floor(data.conversations * 0.3),
     messages: selectedAIForTrend === 'all' ? data.messages : Math.floor(data.messages * 0.3),
   }));
+
+  const exportTrendToCSV = () => {
+    // Generate dates for the last 365 days
+    const dates = [];
+    const today = new Date();
+    for (let i = 364; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+
+    const headers = ['AI社員名', ...dates];
+
+    // Generate rows for Conversations
+    const conversationRows = allAIs.map(ai => {
+      const row = [ai.name];
+      // Mock daily data based on total conversations (assuming total is for 1 month)
+      const dailyAvg = ai.conversations / 30; 
+      for (let i = 0; i < 365; i++) {
+        const variation = 0.5 + Math.random();
+        row.push(Math.floor(dailyAvg * variation).toString());
+      }
+      return row;
+    });
+
+    // Generate rows for Messages
+    const messageRows = allAIs.map(ai => {
+      const row = [ai.name];
+      // Mock daily data based on total messages
+      const dailyAvg = ai.messages / 30; 
+      for (let i = 0; i < 365; i++) {
+        const variation = 0.5 + Math.random();
+        row.push(Math.floor(dailyAvg * variation).toString());
+      }
+      return row;
+    });
+
+    const downloadCSV = (filename: string, rows: string[][]) => {
+      let csvContent = '\uFEFF';
+      csvContent += headers.join(',') + '\n';
+      rows.forEach(row => { csvContent += row.join(',') + '\n'; });
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadCSV(`action_trend_conversations_${dateStr}.csv`, conversationRows);
+    
+    // Slight delay to ensure both files can be downloaded
+    setTimeout(() => {
+      downloadCSV(`action_trend_messages_${dateStr}.csv`, messageRows);
+    }, 500);
+  };
   const selectedUserDetail = userDetailsMap[selectedUserId] || {
     name: activeUsers.find(u => u.id === selectedUserId)?.name || 'Unknown',
     email: activeUsers.find(u => u.id === selectedUserId)?.email || '',
@@ -98,25 +228,31 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
           </h1>
         </div>
 
-        <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100">
-          <Building2 className="w-5 h-5 text-slate-400" />
-          {currentUser.role === 'master_admin' && !initialCompanyId ? (
-            <select
-              value={selectedCompany}
-              onChange={(e) => setSelectedCompany(e.target.value)}
-              className="bg-transparent border-none text-brand-text font-bold focus:outline-none focus:ring-0 cursor-pointer text-sm"
-            >
-              {companies.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          ) : (
-            <span className="text-brand-text font-bold text-sm">
-              {currentUser.role === 'master_admin' && initialCompanyId 
-                ? companies.find(c => c.id === initialCompanyId)?.name 
-                : currentUser.companyName}
-            </span>
-          )}
+        <div className="flex items-center gap-4 flex-wrap justify-center">
+          <Button variant="secondary" size="sm" onClick={exportToCSV} className="shadow-sm">
+            <Download size={16} />
+            CSVエクスポート
+          </Button>
+          <div className="flex items-center gap-4 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100">
+            <Building2 className="w-5 h-5 text-slate-400" />
+            {currentUser.role === 'master_admin' && !initialCompanyId ? (
+              <select
+                value={selectedCompany}
+                onChange={(e) => setSelectedCompany(e.target.value)}
+                className="bg-transparent border-none text-brand-text font-bold focus:outline-none focus:ring-0 cursor-pointer text-sm"
+              >
+                {companies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-brand-text font-bold text-sm">
+                {currentUser.role === 'master_admin' && initialCompanyId 
+                  ? companies.find(c => c.id === initialCompanyId)?.name 
+                  : currentUser.companyName}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -126,31 +262,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
           icon={<MessageSquare className="text-brand-text" size={24} />}
           title="総会話数"
           value={kpiData.totalConversations.toLocaleString()}
+          numericValue={kpiData.totalConversations}
+          note="※直近1ヶ月"
+          delay={0.1}
         />
         <SummaryCard
           icon={<MessageSquare className="text-brand-text" size={24} />}
           title="総メッセージ数"
           value={kpiData.totalMessages.toLocaleString()}
+          numericValue={kpiData.totalMessages}
+          note="※直近1ヶ月"
+          delay={0.2}
         />
         <SummaryCard
           icon={<Zap className="text-brand-text" size={24} />}
           title="トークン使用量"
           value={formatNumber(kpiData.totalTokens)}
+          numericValue={kpiData.totalTokens}
+          formatter={formatNumber}
+          note="※直近1ヶ月"
+          delay={0.3}
         />
         <SummaryCard
           icon={<Users className="text-brand-text" size={24} />}
           title="アクティブユーザー率"
           value={formatPercent(kpiData.activeUserRate)}
-          note="※過去30日間のログイン率"
+          numericValue={kpiData.activeUserRate}
+          formatter={formatPercent}
+          note="※直近1ヶ月のログイン率"
+          delay={0.4}
         />
       </section>
 
       {/* [ACTION TREND CHART] */}
-      <section className="mb-8">
+      <motion.section 
+        className="mb-8"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.6 }}
+        onViewportEnter={() => setIsTrendInView(true)}
+      >
         <GlassPanel className="p-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-            <div className="flex items-center gap-4">
-              <h3 className="text-xl font-bold text-brand-text flex items-center gap-2">
+            <div className="flex items-center gap-4 flex-wrap">
+              <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
                 <div className="w-2 h-6 bg-brand-yellow rounded-full"></div>
                 アクション推移
               </h3>
@@ -164,6 +320,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
                   <option key={ai.id} value={ai.id}>{ai.name}</option>
                 ))}
               </select>
+              <Button variant="secondary" size="sm" onClick={exportTrendToCSV} className="shadow-sm ml-2">
+                <Download size={14} />
+                CSV
+              </Button>
             </div>
             <div className="flex bg-brand-bg p-1 rounded-full">
               <TabButton label="年別" active={activeTab === 'year'} onClick={() => setActiveTab('year')} />
@@ -171,32 +331,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
               <TabButton label="日別" active={activeTab === 'day'} onClick={() => setActiveTab('day')} />
             </div>
           </div>
-          <div className="h-[350px] w-full mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={currentChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} interval={0} />
-                <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dx={-10} />
-                <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dx={10} />
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
-                />
-                <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                <Line yAxisId="left" type="monotone" name="会話数" dataKey="conversations" stroke="#1e1e1e" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-                <Line yAxisId="right" type="monotone" name="メッセージ数" dataKey="messages" stroke="#fbe233" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="h-[350px] w-full mt-4 overflow-x-auto pb-4">
+            <div className="min-w-[600px] h-full">
+              <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
+                {isTrendInView ? (
+                  <LineChart data={currentChartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }} style={{ outline: 'none' }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} minTickGap={15} />
+                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dx={-10} />
+                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dx={10} />
+                    <RechartsTooltip 
+                      contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: 'rgba(255, 255, 255, 0.95)' }}
+                    />
+                    <Legend wrapperStyle={{ paddingTop: '20px' }} />
+                    <Line yAxisId="left" type="monotone" name="会話数" dataKey="conversations" stroke="#1e1e1e" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6, style: { outline: 'none' } }} style={{ outline: 'none' }} />
+                    <Line yAxisId="right" type="monotone" name="メッセージ数" dataKey="messages" stroke="#fbe233" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6, style: { outline: 'none' } }} style={{ outline: 'none' }} />
+                  </LineChart>
+                ) : (
+                  <div className="w-full h-full"></div>
+                )}
+              </ResponsiveContainer>
+            </div>
           </div>
         </GlassPanel>
-      </section>
+      </motion.section>
 
       {/* [POPULAR AI & ACTIVE USERS] */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <motion.section 
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.6 }}
+      >
         <GlassPanel className="p-0 overflow-hidden flex flex-col">
           <div className="p-6 border-b border-brand-bg">
-            <h3 className="text-xl font-bold text-brand-text flex items-center gap-2">
+            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
               <Sparkles className="text-brand-yellow" size={24} fill="currentColor" />
-              人気AI社員トップ10
+              人気AI社員トップ10 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
             </h3>
           </div>
           <div className="p-4 space-y-2">
@@ -216,9 +388,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
 
         <GlassPanel className="p-0 overflow-hidden flex flex-col">
           <div className="p-6 border-b border-brand-bg">
-            <h3 className="text-xl font-bold text-brand-text flex items-center gap-2">
+            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
               <UserIcon className="text-brand-text" size={24} fill="currentColor" />
-              アクティブユーザーTOP10
+              アクティブユーザーTOP10 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
             </h3>
           </div>
           <div className="p-4 space-y-2">
@@ -235,41 +407,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
             ))}
           </div>
         </GlassPanel>
-      </section>
+      </motion.section>
 
       {/* [TOKEN USAGE & MESSAGE RATIO] */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <motion.section 
+        className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.6 }}
+        onViewportEnter={() => {
+          setIsTokenInView(true);
+          setIsRatioInView(true);
+        }}
+      >
         <GlassPanel className="p-8 flex flex-col">
-          <h3 className="text-xl font-bold text-brand-text mb-8 flex items-center gap-2">
+          <h3 className="text-base sm:text-xl font-bold text-brand-text mb-8 flex items-center gap-2 whitespace-nowrap">
             <div className="w-2 h-6 bg-brand-yellow rounded-full"></div>
-            トークン使用量の内訳
+            トークン使用量の内訳 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
           </h3>
           <div className="flex flex-col flex-1 w-full">
             <div className="flex-1 relative min-h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={tokenUsage}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={85}
-                    outerRadius={120}
-                    paddingAngle={4}
-                    dataKey="value"
-                    stroke="none"
-                    onMouseEnter={(_, index) => setHoveredPieIndex(index)}
-                    onMouseLeave={() => setHoveredPieIndex(null)}
-                  >
-                    {tokenUsage.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={COLORS[index % COLORS.length]} 
-                        className="transition-all duration-300 hover:opacity-100 cursor-pointer"
-                        style={{ opacity: hoveredPieIndex !== null && hoveredPieIndex !== index ? 0.3 : 1 }}
-                      />
-                    ))}
-                  </Pie>
-                </PieChart>
+              <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
+                {isTokenInView ? (
+                  <PieChart style={{ outline: 'none' }}>
+                    <Pie
+                      data={tokenUsage}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={85}
+                      outerRadius={120}
+                      paddingAngle={4}
+                      dataKey="value"
+                      stroke="none"
+                      style={{ outline: 'none' }}
+                      onMouseEnter={(_, index) => setHoveredPieIndex(index)}
+                      onMouseLeave={() => setHoveredPieIndex(null)}
+                    >
+                      {tokenUsage.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={COLORS[index % COLORS.length]} 
+                          className="transition-all duration-300 hover:opacity-100 cursor-pointer"
+                          style={{ opacity: hoveredPieIndex !== null && hoveredPieIndex !== index ? 0.3 : 1, outline: 'none' }}
+                        />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                ) : (
+                  <div className="w-full h-full"></div>
+                )}
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 px-4 text-center">
                 <span className="text-xs md:text-sm text-slate-400 font-bold mb-1 truncate w-full max-w-[140px]">
@@ -323,73 +510,86 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
         </GlassPanel>
 
         <GlassPanel className="p-8 flex flex-col">
-          <h3 className="text-xl font-bold text-brand-text mb-8 flex items-center gap-2">
+          <h3 className="text-base sm:text-xl font-bold text-brand-text mb-8 flex items-center gap-2 whitespace-nowrap">
             <div className="w-2 h-6 bg-brand-text rounded-full"></div>
-            AI社員別 会話数 構成比
+            AI社員別 メッセージ数 構成比 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
           </h3>
           <div className="flex-1 w-full min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                layout="vertical"
-                data={aiMessageRatio}
-                margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" />
-                <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  axisLine={false} 
-                  tickLine={false} 
-                  tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
-                  width={120}
-                  tickFormatter={(value) => value.length > 10 ? `${value.substring(0, 10)}...` : value}
-                />
-                <RechartsTooltip 
-                  cursor={{ fill: '#f1f5f9', radius: 8 }}
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100/50 transform transition-all">
-                          <p className="text-xs font-bold text-slate-500 mb-1">{label}</p>
-                          <div className="flex items-baseline gap-2">
-                            <p className="text-lg font-bold text-brand-text">
-                              {payload[0].value?.toLocaleString()}
-                            </p>
-                            <span className="text-[10px] font-bold text-slate-400">メッセージ</span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar 
-                  dataKey="messages" 
-                  name="メッセージ数" 
-                  fill="#1e1e1e" 
-                  radius={[4, 4, 4, 4]} 
-                  barSize={12} 
-                  background={{ fill: '#f1f5f9', radius: 4 }}
-                  animationDuration={1500}
+            <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
+              {isRatioInView ? (
+                <BarChart
+                  layout="vertical"
+                  data={aiMessageRatio}
+                  margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                  style={{ outline: 'none' }}
                 >
-                  {aiMessageRatio.map((entry, index) => (
-                    <Cell key={`cell-${index}`} className="hover:opacity-80 transition-opacity duration-300 cursor-pointer" />
-                  ))}
-                </Bar>
-              </BarChart>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" />
+                  <XAxis type="number" hide />
+                  <YAxis 
+                    dataKey="name" 
+                    type="category" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
+                    width={120}
+                    tickFormatter={(value) => value.length > 10 ? `${value.substring(0, 10)}...` : value}
+                  />
+                  <RechartsTooltip 
+                    cursor={{ fill: '#f1f5f9', radius: 8 }}
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100/50 transform transition-all">
+                            <p className="text-xs font-bold text-slate-500 mb-1">{label}</p>
+                            <div className="flex items-baseline gap-2">
+                              <p className="text-lg font-bold text-brand-text">
+                                {payload[0].value?.toLocaleString()}
+                              </p>
+                              <span className="text-[10px] font-bold text-slate-400">メッセージ</span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar 
+                    dataKey="messages" 
+                    name="メッセージ数" 
+                    fill="#1e1e1e" 
+                    radius={[4, 4, 4, 4]} 
+                    barSize={12} 
+                    background={{ fill: '#f1f5f9', radius: 4 }}
+                    animationDuration={1500}
+                    style={{ outline: 'none' }}
+                  >
+                    {aiMessageRatio.map((entry, index) => (
+                      <Cell key={`cell-${index}`} className="hover:opacity-80 transition-opacity duration-300 cursor-pointer" style={{ outline: 'none' }} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              ) : (
+                <div className="w-full h-full"></div>
+              )}
             </ResponsiveContainer>
           </div>
         </GlassPanel>
-      </section>
+      </motion.section>
 
       {/* [USER DETAILS] */}
-      <section className="mb-8">
+      <motion.section 
+        className="mb-8"
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.6 }}
+        onViewportEnter={() => setIsUserDetailsInView(true)}
+      >
         <GlassPanel className="p-0 overflow-hidden">
           <div className="p-6 border-b border-brand-bg">
-            <h3 className="text-xl font-bold text-brand-text flex items-center gap-2">
+            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
               <UserIcon className="text-brand-text" size={24} />
-              ユーザー別利用詳細
+              ユーザー別利用詳細 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
             </h3>
           </div>
           <div className="flex flex-col md:flex-row h-auto md:h-[500px]">
@@ -410,7 +610,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
                   <button
                     key={user.id}
                     onClick={() => setSelectedUserId(user.id)}
-                    className={`w-full text-left p-4 hover:bg-white transition-colors flex items-center justify-between group ${
+                    className={`w-full text-left p-4 hover:bg-white transition-colors flex items-center justify-between group focus:outline-none ${
                       selectedUserId === user.id ? "bg-white border-l-4 border-brand-yellow shadow-sm" : "border-l-4 border-transparent"
                     }`}
                   >
@@ -479,8 +679,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
                     </div>
                     <div className="w-full bg-brand-bg rounded-full h-3 overflow-hidden">
                       <div 
-                        className="bg-brand-text h-3 rounded-full transition-all duration-500" 
-                        style={{ width: `${item.ratio}%` }}
+                        className="bg-brand-text h-3 rounded-full transition-all duration-1000 ease-out" 
+                        style={{ width: isUserDetailsInView ? `${item.ratio}%` : '0%' }}
                       ></div>
                     </div>
                     <p className="text-xs text-right text-slate-400 font-bold">{item.ratio}%</p>
@@ -494,22 +694,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
             </div>
           </div>
         </GlassPanel>
-      </section>
+      </motion.section>
 
       {/* [AI EMPLOYEE TABLE] */}
-      <section>
+      <motion.section
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: "-50px" }}
+        transition={{ duration: 0.6 }}
+      >
         <GlassPanel className="p-0 overflow-hidden">
           <div className="p-6 border-b border-brand-bg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <h3 className="text-xl font-bold text-brand-text flex items-center gap-2">
+            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
               <Bot className="text-brand-text" size={24} />
-              AI社員 利用状況一覧
+              AI社員 利用状況一覧 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
             </h3>
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-slate-400" />
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as any)}
-                className="bg-brand-bg/50 border border-slate-200 text-slate-600 text-sm rounded-lg focus:ring-brand-yellow focus:border-brand-yellow block p-2 font-bold outline-none"
+                className="bg-brand-bg/50 border border-slate-200 text-slate-600 text-sm rounded-lg focus:ring-brand-yellow focus:border-brand-yellow block p-2 font-bold focus:outline-none"
               >
                 <option value="All">すべてのカテゴリ</option>
                 <option value="Basic">ベーシック</option>
@@ -522,32 +727,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
               <thead className="text-xs text-slate-400 uppercase bg-brand-bg/50 border-b border-brand-bg">
                 <tr>
                   <th className="px-6 py-4 font-bold">
-                    <button onClick={() => requestSort('name')} className="flex items-center gap-1 hover:text-brand-text transition-colors uppercase tracking-wider">
+                    <button onClick={() => requestSort('name')} className="flex items-center gap-1 hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
                       AI社員名
                       {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
                     </button>
                   </th>
                   <th className="px-6 py-4 font-bold">カテゴリ</th>
                   <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('conversations')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider">
+                    <button onClick={() => requestSort('conversations')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
                       会話数
                       {sortConfig?.key === 'conversations' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
                     </button>
                   </th>
                   <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('messages')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider">
+                    <button onClick={() => requestSort('messages')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
                       メッセージ数
                       {sortConfig?.key === 'messages' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
                     </button>
                   </th>
                   <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('avg')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider">
+                    <button onClick={() => requestSort('avg')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
                       平均対話回数
                       {sortConfig?.key === 'avg' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
                     </button>
                   </th>
                   <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('tokens')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider">
+                    <button onClick={() => requestSort('tokens')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
                       トークン使用量
                       {sortConfig?.key === 'tokens' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
                     </button>
@@ -557,10 +762,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
               <tbody className="divide-y divide-brand-bg">
                 {sortedAndFilteredAIs.map((ai) => (
                   <tr key={ai.id} className="hover:bg-brand-bg/30 transition-colors">
-                    <td className="px-6 py-4 font-bold text-brand-text flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-brand-yellow/20 text-brand-text flex items-center justify-center font-bold text-xs shadow-sm">
-                        {ai.name.charAt(0)}
-                      </div>
+                    <td className="px-6 py-4 font-bold text-brand-text">
                       {ai.name}
                     </td>
                     <td className="px-6 py-4">
@@ -580,7 +782,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
             </table>
           </div>
         </GlassPanel>
-      </section>
+      </motion.section>
 
     </main>
   );
@@ -594,24 +796,56 @@ const SummaryCard: React.FC<{
   icon: React.ReactNode;
   title: string;
   value: string;
+  numericValue?: number;
+  formatter?: (val: number) => string;
   note?: string;
-}> = ({ icon, title, value, note }) => (
-  <GlassPanel className="p-8 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 bg-white">
-    <div className="flex items-center gap-4 mb-4 relative z-10">
-      <div className="w-14 h-14 rounded-full flex items-center justify-center bg-brand-yellow text-brand-text shadow-sm">
-        {icon}
+  delay?: number;
+}> = ({ icon, title, value, numericValue, formatter, note, delay = 0 }) => {
+  const count = useMotionValue(0);
+  const rounded = useTransform(count, (latest) => {
+    if (formatter) {
+      return formatter(latest);
+    }
+    return Math.round(latest).toLocaleString();
+  });
+
+  React.useEffect(() => {
+    if (numericValue !== undefined) {
+      const controls = animate(count, numericValue, { 
+        duration: 1.5, 
+        ease: "easeOut",
+        delay: delay 
+      });
+      return controls.stop;
+    }
+  }, [numericValue, delay, count]);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.5, delay: delay }}
+      className="bg-brand-card rounded-3xl shadow-sm border border-transparent p-8 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300 bg-white"
+    >
+      <div className="flex items-center gap-4 mb-4 relative z-10">
+        <div className="w-14 h-14 rounded-full flex items-center justify-center bg-brand-yellow text-brand-text shadow-sm">
+          {icon}
+        </div>
+        <div className="font-bold text-slate-500 text-sm">{title}</div>
       </div>
-      <div className="font-bold text-slate-500 text-sm">{title}</div>
-    </div>
-    <div className="text-4xl font-bold text-brand-text mb-2 relative z-10 tracking-tight">{value}</div>
-    {note && <p className="text-[10px] text-slate-400 mt-3 leading-tight relative z-10 font-bold">{note}</p>}
-  </GlassPanel>
-);
+      <div className="text-4xl font-bold text-brand-text mb-2 relative z-10 tracking-tight">
+        {numericValue !== undefined ? <motion.span>{rounded}</motion.span> : value}
+      </div>
+      {note && <p className="text-[10px] text-slate-400 mt-3 leading-tight relative z-10 font-bold">{note}</p>}
+    </motion.div>
+  );
+};
 
 const TabButton: React.FC<{ label: string; active: boolean; onClick: () => void }> = ({ label, active, onClick }) => (
   <button
     onClick={onClick}
-    className={`px-5 py-2 rounded-full text-xs font-bold transition-all ${
+    className={`px-5 py-2 rounded-full text-xs font-bold transition-all focus:outline-none ${
       active
         ? 'bg-brand-text text-white shadow-lg'
         : 'text-slate-500 hover:text-brand-text'

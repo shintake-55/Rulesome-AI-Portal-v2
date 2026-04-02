@@ -33,7 +33,7 @@ export const Button: React.FC<ButtonProps> = ({
   ...props 
 }) => {
   // Base style: Fully rounded (pill), transition opacity on hover
-  const baseStyle = "transition-opacity duration-200 font-bold rounded-full flex items-center justify-center gap-2 active:scale-95 hover:opacity-70 shadow-none border";
+  const baseStyle = "transition-opacity duration-200 font-bold rounded-full flex items-center justify-center gap-2 active:scale-95 hover:opacity-70 shadow-none border focus:outline-none";
   
   let variantStyle = "";
   switch (variant) {

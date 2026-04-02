@@ -17,7 +17,7 @@ export const timeSeriesData = {
     conversations: Math.floor(Math.random() * 200) + 50,
     messages: Math.floor(Math.random() * 1000) + 300,
   })),
-  month: Array.from({ length: 30 }, (_, i) => ({
+  month: Array.from({ length: 31 }, (_, i) => ({
     date: `${i + 1}日`,
     conversations: Math.floor(Math.random() * 500) + 200,
     messages: Math.floor(Math.random() * 3000) + 1000,
