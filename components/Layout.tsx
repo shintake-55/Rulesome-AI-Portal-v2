@@ -221,13 +221,6 @@ export const Layout: React.FC<LayoutProps> = ({
             />
 
             <SidebarItem 
-              icon={<Trophy size={20} />} 
-              label="ランキング" 
-              isActive={currentPage === PageView.RANKING}
-              onClick={() => handleNavigate(PageView.RANKING)}
-            />
-
-            <SidebarItem 
               icon={<Bot size={20} />} 
               label="AI社員一覧" 
               isActive={currentPage === PageView.AI_EMPLOYEE_LIST} 

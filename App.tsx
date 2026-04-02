@@ -6,9 +6,7 @@ import { PostDetail } from './pages/PostDetail';
 import { AIEmployeeList } from './pages/AIEmployeeList';
 import { AIChat } from './pages/AIChat';
 import { CompanyGroupList, CompanyEmployeeList, CompanyCategoryList, CompanyPostList } from './pages/CompanySubLists';
-import { CompanyStats } from './pages/CompanyStats';
 import { Dashboard } from './pages/Dashboard';
-import { Ranking } from './pages/Ranking';
 import { MasterGroups } from './pages/MasterGroups';
 import { MasterUsers } from './pages/MasterUsers';
 import { MasterCategories } from './pages/MasterCategories';
@@ -270,9 +268,8 @@ const App: React.FC = () => {
 
           {/* Admin User Pages */}
           {currentView === PageView.DASHBOARD && (
-            <Dashboard onNavigateRanking={() => handleNavigate(PageView.RANKING)} />
+            <Dashboard currentUser={currentUser} initialCompanyId={selectedCompany?.id} />
           )}
-          {currentView === PageView.RANKING && <Ranking />}
           {currentView === PageView.AI_EMPLOYEE_LIST && (
             <AIEmployeeList 
                 userRole={currentUser.role} 
@@ -328,9 +325,6 @@ const App: React.FC = () => {
           )}
           {selectedCompany && currentView === PageView.COMPANY_POSTS && (
             <CompanyPostList company={selectedCompany} onBack={() => handleNavigate(PageView.COMPANY_LIST)} />
-          )}
-          {selectedCompany && currentView === PageView.COMPANY_STATS && (
-            <CompanyStats company={selectedCompany} onBack={() => handleNavigate(PageView.COMPANY_LIST)} />
           )}
 
           {currentView === PageView.POST_LIST && (

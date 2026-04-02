@@ -164,7 +164,6 @@ export enum PageView {
   LOGIN = 'login',
   HOME = 'home', // New Home Tab
   DASHBOARD = 'dashboard',
-  RANKING = 'ranking',
   AI_EMPLOYEE_LIST = 'ai_employee_list', // Formerly POST_LIST
   AI_CHAT = 'ai_chat', // Added for Chat Screen
   POST_LIST = 'post_list',
@@ -184,7 +183,6 @@ export enum PageView {
   COMPANY_EMPLOYEES = 'company_employees',
   COMPANY_CATEGORIES = 'company_categories',
   COMPANY_POSTS = 'company_posts',
-  COMPANY_STATS = 'company_stats',
   
   POST_DETAIL = 'post_detail',
 }

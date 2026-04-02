@@ -160,7 +160,7 @@ export const CompanyList: React.FC<CompanyListProps> = ({ onNavigateSubPage }) =
             {/* Action Buttons */}
             <div className="grid grid-cols-2 gap-4 mt-auto">
               <button 
-                onClick={() => handleNavigate(company, PageView.COMPANY_STATS)}
+                onClick={() => handleNavigate(company, PageView.DASHBOARD)}
                 className="flex items-center justify-center gap-2 py-3 bg-brand-text text-white text-sm font-bold rounded-full hover:opacity-70 transition-opacity"
               >
                 <BarChart2 size={18} />
