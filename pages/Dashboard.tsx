@@ -40,6 +40,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
   const [isTokenInView, setIsTokenInView] = useState(false);
   const [isRatioInView, setIsRatioInView] = useState(false);
   const [isUserDetailsInView, setIsUserDetailsInView] = useState(false);
+  const [isGroupDetailsInView, setIsGroupDetailsInView] = useState(false);
+
+  const isRegularUser = currentUser.role === 'user';
+  const personalUserId = activeUsers.find(u => u.name === currentUser.name)?.id || 'u1';
+  const personalUserDetail = userDetailsMap[personalUserId] || userDetailsMap['u1'];
+
+  const groupDetails = useMemo(() => {
+    const groups: Record<string, any> = {};
+    activeUsers.forEach(user => {
+      const groupName = user.group || '未分類';
+      if (!groups[groupName]) {
+        groups[groupName] = {
+          name: groupName,
+          totalMessages: 0,
+          totalConversations: 0,
+          users: 0,
+          aiUsage: {} as Record<string, { messages: number, conversations: number }>,
+        };
+      }
+      
+      const userDetail = userDetailsMap[user.id];
+      if (userDetail) {
+        groups[groupName].totalMessages += userDetail.totalMessages;
+        groups[groupName].totalConversations += userDetail.totalConversations;
+        groups[groupName].users += 1;
+        
+        userDetail.usage.forEach((u: any) => {
+          if (!groups[groupName].aiUsage[u.aiName]) {
+            groups[groupName].aiUsage[u.aiName] = { messages: 0, conversations: 0 };
+          }
+          groups[groupName].aiUsage[u.aiName].messages += u.messages;
+          groups[groupName].aiUsage[u.aiName].conversations += u.conversations;
+        });
+      }
+    });
+
+    return Object.values(groups).map(g => {
+      let mostUsedAI = 'N/A';
+      let maxMessages = 0;
+      const usageArray = [];
+      for (const [aiName, data] of Object.entries(g.aiUsage)) {
+        const usageData = data as { messages: number, conversations: number };
+        usageArray.push({
+          aiName,
+          messages: usageData.messages,
+          conversations: usageData.conversations,
+          ratio: Math.round((usageData.messages / g.totalMessages) * 100) || 0
+        });
+        if (usageData.messages > maxMessages) {
+          maxMessages = usageData.messages;
+          mostUsedAI = aiName;
+        }
+      }
+      
+      return {
+        ...g,
+        mostUsedAI,
+        usage: usageArray.sort((a, b) => b.messages - a.messages)
+      };
+    }).sort((a, b) => b.totalMessages - a.totalMessages);
+  }, []);
+
+  const [selectedGroupName, setSelectedGroupName] = useState<string>(groupDetails[0]?.name || '');
+  const selectedGroupDetail = groupDetails.find(g => g.name === selectedGroupName) || groupDetails[0];
 
   const sortedAndFilteredAIs = useMemo(() => {
     let filtered = [...allAIs];
@@ -141,11 +205,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
   };
 
   // Filter timeSeriesData based on selected AI (mocking the filter for now)
-  const currentChartData = timeSeriesData[activeTab].map(data => ({
-    ...data,
-    conversations: selectedAIForTrend === 'all' ? data.conversations : Math.floor(data.conversations * 0.3),
-    messages: selectedAIForTrend === 'all' ? data.messages : Math.floor(data.messages * 0.3),
-  }));
+  const currentChartData = timeSeriesData[activeTab].map(data => {
+    const scale = isRegularUser ? 0.05 : 1;
+    return {
+      ...data,
+      conversations: selectedAIForTrend === 'all' ? Math.floor(data.conversations * scale) : Math.floor(data.conversations * 0.3 * scale),
+      messages: selectedAIForTrend === 'all' ? Math.floor(data.messages * scale) : Math.floor(data.messages * 0.3 * scale),
+    };
+  });
 
   const exportTrendToCSV = () => {
     // Generate dates for the last 365 days
@@ -215,6 +282,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
     usage: []
   };
 
+  const displayUserDetail = isRegularUser ? personalUserDetail : selectedUserDetail;
+
   const COLORS = ['#1e1e1e', '#fbe233', '#cbd5e1', '#94a3b8', '#64748b', '#475569'];
 
   return (
@@ -257,41 +326,45 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
       </header>
 
       {/* [KPI CARDS] */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <section className={`grid grid-cols-1 md:grid-cols-2 ${isRegularUser ? 'lg:grid-cols-2' : 'lg:grid-cols-4'} gap-6 mb-8`}>
         <SummaryCard
           icon={<MessageSquare className="text-brand-text" size={24} />}
           title="総会話数"
-          value={kpiData.totalConversations.toLocaleString()}
-          numericValue={kpiData.totalConversations}
+          value={isRegularUser ? personalUserDetail.totalConversations.toLocaleString() : kpiData.totalConversations.toLocaleString()}
+          numericValue={isRegularUser ? personalUserDetail.totalConversations : kpiData.totalConversations}
           note="※直近1ヶ月"
           delay={0.1}
         />
         <SummaryCard
           icon={<MessageSquare className="text-brand-text" size={24} />}
           title="総メッセージ数"
-          value={kpiData.totalMessages.toLocaleString()}
-          numericValue={kpiData.totalMessages}
+          value={isRegularUser ? personalUserDetail.totalMessages.toLocaleString() : kpiData.totalMessages.toLocaleString()}
+          numericValue={isRegularUser ? personalUserDetail.totalMessages : kpiData.totalMessages}
           note="※直近1ヶ月"
           delay={0.2}
         />
-        <SummaryCard
-          icon={<Zap className="text-brand-text" size={24} />}
-          title="トークン使用量"
-          value={formatNumber(kpiData.totalTokens)}
-          numericValue={kpiData.totalTokens}
-          formatter={formatNumber}
-          note="※直近1ヶ月"
-          delay={0.3}
-        />
-        <SummaryCard
-          icon={<Users className="text-brand-text" size={24} />}
-          title="アクティブユーザー率"
-          value={formatPercent(kpiData.activeUserRate)}
-          numericValue={kpiData.activeUserRate}
-          formatter={formatPercent}
-          note="※直近1ヶ月のログイン率"
-          delay={0.4}
-        />
+        {!isRegularUser && (
+          <>
+            <SummaryCard
+              icon={<Zap className="text-brand-text" size={24} />}
+              title="トークン使用量"
+              value={formatNumber(kpiData.totalTokens)}
+              numericValue={kpiData.totalTokens}
+              formatter={formatNumber}
+              note="※直近1ヶ月"
+              delay={0.3}
+            />
+            <SummaryCard
+              icon={<Users className="text-brand-text" size={24} />}
+              title="アクティブユーザー率"
+              value={formatPercent(kpiData.activeUserRate)}
+              numericValue={kpiData.activeUserRate}
+              formatter={formatPercent}
+              note="※直近1ヶ月のログイン率"
+              delay={0.4}
+            />
+          </>
+        )}
       </section>
 
       {/* [ACTION TREND CHART] */}
@@ -357,224 +430,350 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
       </motion.section>
 
       {/* [POPULAR AI & ACTIVE USERS] */}
-      <motion.section 
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-50px" }}
-        transition={{ duration: 0.6 }}
-      >
-        <GlassPanel className="p-0 overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-brand-bg">
-            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
-              <Sparkles className="text-brand-yellow" size={24} fill="currentColor" />
-              人気AI社員トップ10 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
-            </h3>
-          </div>
-          <div className="p-4 space-y-2">
-            {popularAIs.map((ai, index) => (
-              <RankingRow 
-                key={ai.id} 
-                rank={index + 1} 
-                title={ai.name} 
-                sub={ai.type} 
-                value={ai.conversations} 
-                type={ai.type === 'Custom' ? 'custom' : 'bot'} 
-                valueLabel="会話"
-              />
-            ))}
-          </div>
-        </GlassPanel>
+      {!isRegularUser && (
+        <motion.section 
+          className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.6 }}
+        >
+          <GlassPanel className="p-0 overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-brand-bg">
+              <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
+                <Sparkles className="text-brand-yellow" size={24} fill="currentColor" />
+                人気AI社員トップ10 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+              </h3>
+            </div>
+            <div className="p-4 space-y-2">
+              {popularAIs.map((ai, index) => (
+                <RankingRow 
+                  key={ai.id} 
+                  rank={index + 1} 
+                  title={ai.name} 
+                  sub={ai.type} 
+                  value={ai.conversations} 
+                  type={ai.type === 'Custom' ? 'custom' : 'bot'} 
+                  valueLabel="会話"
+                />
+              ))}
+            </div>
+          </GlassPanel>
 
-        <GlassPanel className="p-0 overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-brand-bg">
-            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
-              <UserIcon className="text-brand-text" size={24} fill="currentColor" />
-              アクティブユーザーTOP10 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
-            </h3>
-          </div>
-          <div className="p-4 space-y-2">
-            {activeUsers.map((user, index) => (
-              <RankingRow 
-                key={user.id} 
-                rank={index + 1} 
-                title={user.name} 
-                sub={user.email} 
-                value={user.messages} 
-                type="user" 
-                valueLabel="回"
-              />
-            ))}
-          </div>
-        </GlassPanel>
-      </motion.section>
+          <GlassPanel className="p-0 overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-brand-bg">
+              <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
+                <UserIcon className="text-brand-text" size={24} fill="currentColor" />
+                アクティブユーザーTOP10 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+              </h3>
+            </div>
+            <div className="p-4 space-y-2">
+              {activeUsers.map((user, index) => (
+                <RankingRow 
+                  key={user.id} 
+                  rank={index + 1} 
+                  title={user.name} 
+                  sub={user.email} 
+                  value={user.messages} 
+                  type="user" 
+                  valueLabel="回"
+                />
+              ))}
+            </div>
+          </GlassPanel>
+        </motion.section>
+      )}
 
       {/* [TOKEN USAGE & MESSAGE RATIO] */}
-      <motion.section 
-        className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-50px" }}
-        transition={{ duration: 0.6 }}
-        onViewportEnter={() => {
-          setIsTokenInView(true);
-          setIsRatioInView(true);
-        }}
-      >
-        <GlassPanel className="p-8 flex flex-col">
-          <h3 className="text-base sm:text-xl font-bold text-brand-text mb-8 flex items-center gap-2 whitespace-nowrap">
-            <div className="w-2 h-6 bg-brand-yellow rounded-full"></div>
-            トークン使用量の内訳 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
-          </h3>
-          <div className="flex flex-col flex-1 w-full">
-            <div className="flex-1 relative min-h-[250px]">
+      {!isRegularUser && (
+        <motion.section 
+          className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.6 }}
+          onViewportEnter={() => {
+            setIsTokenInView(true);
+            setIsRatioInView(true);
+          }}
+        >
+          <GlassPanel className="p-8 flex flex-col">
+            <h3 className="text-base sm:text-xl font-bold text-brand-text mb-8 flex items-center gap-2 whitespace-nowrap">
+              <div className="w-2 h-6 bg-brand-yellow rounded-full"></div>
+              トークン使用量の内訳 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+            </h3>
+            <div className="flex flex-col flex-1 w-full">
+              <div className="flex-1 relative min-h-[250px]">
+                <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
+                  {isTokenInView ? (
+                    <PieChart style={{ outline: 'none' }}>
+                      <Pie
+                        data={tokenUsage}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={85}
+                        outerRadius={120}
+                        paddingAngle={4}
+                        dataKey="value"
+                        stroke="none"
+                        style={{ outline: 'none' }}
+                        onMouseEnter={(_, index) => setHoveredPieIndex(index)}
+                        onMouseLeave={() => setHoveredPieIndex(null)}
+                      >
+                        {tokenUsage.map((entry, index) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={COLORS[index % COLORS.length]} 
+                            className="transition-all duration-300 hover:opacity-100 cursor-pointer"
+                            style={{ opacity: hoveredPieIndex !== null && hoveredPieIndex !== index ? 0.3 : 1, outline: 'none' }}
+                          />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  ) : (
+                    <div className="w-full h-full"></div>
+                  )}
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 px-4 text-center">
+                  <span className="text-xs md:text-sm text-slate-400 font-bold mb-1 truncate w-full max-w-[140px]">
+                    {hoveredPieIndex !== null ? tokenUsage[hoveredPieIndex].name : '合計'}
+                  </span>
+                  <span className="text-2xl md:text-3xl font-bold text-brand-text tracking-tight">
+                    {hoveredPieIndex !== null 
+                      ? formatNumber(tokenUsage[hoveredPieIndex].value) 
+                      : formatNumber(kpiData.totalTokens)}
+                  </span>
+                  {hoveredPieIndex !== null && (
+                    <span className="text-[10px] md:text-xs text-brand-yellow font-bold mt-1 bg-brand-yellow/10 px-2.5 py-0.5 rounded-full">
+                      {formatPercent((tokenUsage[hoveredPieIndex].value / kpiData.totalTokens) * 100)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Custom Interactive Legend */}
+              <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 px-2">
+                {tokenUsage.map((entry, index) => (
+                  <div 
+                    key={`legend-${index}`} 
+                    className={`flex items-center justify-between p-2 rounded-xl transition-all duration-300 cursor-pointer border ${
+                      hoveredPieIndex === index 
+                        ? 'bg-white shadow-sm border-slate-200 scale-[1.02]' 
+                        : 'bg-transparent border-transparent hover:bg-slate-50'
+                    }`}
+                    onMouseEnter={() => setHoveredPieIndex(index)}
+                    onMouseLeave={() => setHoveredPieIndex(null)}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div 
+                        className="w-3.5 h-3.5 rounded-full shadow-sm transition-transform duration-300" 
+                        style={{ 
+                          backgroundColor: COLORS[index % COLORS.length],
+                          transform: hoveredPieIndex === index ? 'scale(1.2)' : 'scale(1)'
+                        }}
+                      ></div>
+                      <span className={`text-xs font-bold transition-colors ${hoveredPieIndex === index ? 'text-brand-text' : 'text-slate-500'}`}>
+                        {entry.name}
+                      </span>
+                    </div>
+                    <span className={`text-xs font-bold transition-colors ${hoveredPieIndex === index ? 'text-brand-text' : 'text-slate-400'}`}>
+                      {formatPercent((entry.value / kpiData.totalTokens) * 100)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </GlassPanel>
+
+          <GlassPanel className="p-8 flex flex-col">
+            <h3 className="text-base sm:text-xl font-bold text-brand-text mb-8 flex items-center gap-2 whitespace-nowrap">
+              <div className="w-2 h-6 bg-brand-text rounded-full"></div>
+              AI社員別 メッセージ数 構成比 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+            </h3>
+            <div className="flex-1 w-full min-h-[350px]">
               <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
-                {isTokenInView ? (
-                  <PieChart style={{ outline: 'none' }}>
-                    <Pie
-                      data={tokenUsage}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={85}
-                      outerRadius={120}
-                      paddingAngle={4}
-                      dataKey="value"
-                      stroke="none"
+                {isRatioInView ? (
+                  <BarChart
+                    layout="vertical"
+                    data={aiMessageRatio}
+                    margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                    style={{ outline: 'none' }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" />
+                    <XAxis type="number" hide />
+                    <YAxis 
+                      dataKey="name" 
+                      type="category" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
+                      width={120}
+                      tickFormatter={(value) => value.length > 10 ? `${value.substring(0, 10)}...` : value}
+                    />
+                    <RechartsTooltip 
+                      cursor={{ fill: '#f1f5f9', radius: 8 }}
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100/50 transform transition-all">
+                              <p className="text-xs font-bold text-slate-500 mb-1">{label}</p>
+                              <div className="flex items-baseline gap-2">
+                                <p className="text-lg font-bold text-brand-text">
+                                  {payload[0].value?.toLocaleString()}
+                                </p>
+                                <span className="text-[10px] font-bold text-slate-400">メッセージ</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar 
+                      dataKey="messages" 
+                      name="メッセージ数" 
+                      fill="#1e1e1e" 
+                      radius={[4, 4, 4, 4]} 
+                      barSize={12} 
+                      background={{ fill: '#f1f5f9', radius: 4 }}
+                      animationDuration={1500}
                       style={{ outline: 'none' }}
-                      onMouseEnter={(_, index) => setHoveredPieIndex(index)}
-                      onMouseLeave={() => setHoveredPieIndex(null)}
                     >
-                      {tokenUsage.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={COLORS[index % COLORS.length]} 
-                          className="transition-all duration-300 hover:opacity-100 cursor-pointer"
-                          style={{ opacity: hoveredPieIndex !== null && hoveredPieIndex !== index ? 0.3 : 1, outline: 'none' }}
-                        />
+                      {aiMessageRatio.map((entry, index) => (
+                        <Cell key={`cell-${index}`} className="hover:opacity-80 transition-opacity duration-300 cursor-pointer" style={{ outline: 'none' }} />
                       ))}
-                    </Pie>
-                  </PieChart>
+                    </Bar>
+                  </BarChart>
                 ) : (
                   <div className="w-full h-full"></div>
                 )}
               </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 px-4 text-center">
-                <span className="text-xs md:text-sm text-slate-400 font-bold mb-1 truncate w-full max-w-[140px]">
-                  {hoveredPieIndex !== null ? tokenUsage[hoveredPieIndex].name : '合計'}
-                </span>
-                <span className="text-2xl md:text-3xl font-bold text-brand-text tracking-tight">
-                  {hoveredPieIndex !== null 
-                    ? formatNumber(tokenUsage[hoveredPieIndex].value) 
-                    : formatNumber(kpiData.totalTokens)}
-                </span>
-                {hoveredPieIndex !== null && (
-                  <span className="text-[10px] md:text-xs text-brand-yellow font-bold mt-1 bg-brand-yellow/10 px-2.5 py-0.5 rounded-full">
-                    {formatPercent((tokenUsage[hoveredPieIndex].value / kpiData.totalTokens) * 100)}
-                  </span>
-                )}
+            </div>
+          </GlassPanel>
+        </motion.section>
+      )}
+
+      {/* [GROUP DETAILS] */}
+      {!isRegularUser && groupDetails.length > 0 && (
+        <motion.section 
+          className="mb-8"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.6 }}
+          onViewportEnter={() => setIsGroupDetailsInView(true)}
+        >
+          <GlassPanel className="p-0 overflow-hidden">
+            <div className="p-6 border-b border-brand-bg">
+              <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
+                <Building2 className="text-brand-text" size={24} />
+                グループ別利用詳細 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+              </h3>
+            </div>
+            <div className="flex flex-col md:flex-row h-auto md:h-[500px]">
+              {/* Left List */}
+              <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-brand-bg overflow-y-auto bg-brand-bg/30 max-h-[300px] md:max-h-full">
+                <div className="p-4 border-b border-brand-bg sticky top-0 bg-white/90 backdrop-blur z-10">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="グループを検索..."
+                      className="w-full pl-10 pr-4 py-2.5 text-sm border-none rounded-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow text-brand-text"
+                    />
+                  </div>
+                </div>
+                <div className="divide-y divide-brand-bg">
+                  {groupDetails.map(group => (
+                    <button
+                      key={group.name}
+                      onClick={() => setSelectedGroupName(group.name)}
+                      className={`w-full text-left p-4 hover:bg-white transition-colors flex items-center justify-between group focus:outline-none ${
+                        selectedGroupName === group.name ? "bg-white border-l-4 border-brand-yellow shadow-sm" : "border-l-4 border-transparent"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1 pr-4">
+                        <p className={`font-bold truncate ${selectedGroupName === group.name ? "text-brand-text" : "text-slate-700"}`}>{group.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{group.users} 名のユーザー</p>
+                        <p className="text-[10px] text-slate-500 mt-1 truncate">
+                          よく使うAI: <span className="font-bold text-slate-600">{group.mostUsedAI}</span>
+                        </p>
+                      </div>
+                      <div className="text-right flex items-center gap-2 flex-shrink-0">
+                        <div>
+                          <p className="text-sm font-bold text-brand-text">{group.totalMessages}</p>
+                          <p className="text-[10px] text-slate-400">メッセージ</p>
+                        </div>
+                        <ChevronRight className={`w-4 h-4 transition-colors ${selectedGroupName === group.name ? "text-brand-yellow" : "text-slate-300 group-hover:text-slate-500"}`} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Details */}
+              <div className="w-full md:w-2/3 p-8 overflow-y-auto bg-white">
+                <div className="flex items-start mb-8">
+                  <div className="flex items-center gap-5">
+                    <div className="w-16 h-16 rounded-full bg-brand-bg text-brand-text flex items-center justify-center font-bold text-2xl shadow-sm border border-slate-100 flex-shrink-0">
+                      <Building2 size={32} />
+                    </div>
+                    <div className="flex flex-col items-start">
+                      <h3 className="text-2xl font-bold text-brand-text">{selectedGroupDetail?.name}</h3>
+                      <p className="text-slate-500 font-medium mb-2">{selectedGroupDetail?.users} 名のユーザー</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">よく使うAI社員:</p>
+                        <span className="inline-flex items-center rounded-full bg-brand-yellow/20 text-brand-text px-2 py-0.5 text-xs font-bold">
+                          {selectedGroupDetail?.mostUsedAI}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-10">
+                  <div className="bg-brand-bg/50 p-5 rounded-2xl border border-brand-bg">
+                    <p className="text-xs text-slate-500 font-bold mb-1 uppercase tracking-wider">総メッセージ数</p>
+                    <p className="text-3xl font-bold text-brand-text">{selectedGroupDetail?.totalMessages.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-brand-bg/50 p-5 rounded-2xl border border-brand-bg">
+                    <p className="text-xs text-slate-500 font-bold mb-1 uppercase tracking-wider">総会話数</p>
+                    <p className="text-3xl font-bold text-brand-text">{selectedGroupDetail?.totalConversations.toLocaleString()}</p>
+                  </div>
+                </div>
+
+                <h4 className="text-sm font-bold text-brand-text mb-6 flex items-center gap-2">
+                  <div className="w-1.5 h-4 bg-brand-text rounded-full"></div>
+                  利用AI社員ごとの内訳
+                </h4>
+                <div className="space-y-6">
+                  {selectedGroupDetail?.usage.length > 0 ? selectedGroupDetail.usage.map((item: any, idx: number) => (
+                    <div key={idx} className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="font-bold text-slate-700">{item.aiName}</span>
+                        <span className="text-slate-500 font-medium">
+                          <strong className="text-brand-text">{item.messages}</strong> メッセージ / {item.conversations} 会話
+                        </span>
+                      </div>
+                      <div className="w-full bg-brand-bg rounded-full h-3 overflow-hidden">
+                        <div 
+                          className="bg-brand-text h-3 rounded-full transition-all duration-1000 ease-out" 
+                          style={{ width: isGroupDetailsInView ? `${item.ratio}%` : '0%' }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-right text-slate-400 font-bold">{item.ratio}%</p>
+                    </div>
+                  )) : (
+                    <div className="text-center py-16 text-slate-400 bg-brand-bg/30 rounded-3xl border border-dashed border-slate-200 font-bold">
+                      詳細データがありません
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-            
-            {/* Custom Interactive Legend */}
-            <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 px-2">
-              {tokenUsage.map((entry, index) => (
-                <div 
-                  key={`legend-${index}`} 
-                  className={`flex items-center justify-between p-2 rounded-xl transition-all duration-300 cursor-pointer border ${
-                    hoveredPieIndex === index 
-                      ? 'bg-white shadow-sm border-slate-200 scale-[1.02]' 
-                      : 'bg-transparent border-transparent hover:bg-slate-50'
-                  }`}
-                  onMouseEnter={() => setHoveredPieIndex(index)}
-                  onMouseLeave={() => setHoveredPieIndex(null)}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div 
-                      className="w-3.5 h-3.5 rounded-full shadow-sm transition-transform duration-300" 
-                      style={{ 
-                        backgroundColor: COLORS[index % COLORS.length],
-                        transform: hoveredPieIndex === index ? 'scale(1.2)' : 'scale(1)'
-                      }}
-                    ></div>
-                    <span className={`text-xs font-bold transition-colors ${hoveredPieIndex === index ? 'text-brand-text' : 'text-slate-500'}`}>
-                      {entry.name}
-                    </span>
-                  </div>
-                  <span className={`text-xs font-bold transition-colors ${hoveredPieIndex === index ? 'text-brand-text' : 'text-slate-400'}`}>
-                    {formatPercent((entry.value / kpiData.totalTokens) * 100)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </GlassPanel>
-
-        <GlassPanel className="p-8 flex flex-col">
-          <h3 className="text-base sm:text-xl font-bold text-brand-text mb-8 flex items-center gap-2 whitespace-nowrap">
-            <div className="w-2 h-6 bg-brand-text rounded-full"></div>
-            AI社員別 メッセージ数 構成比 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
-          </h3>
-          <div className="flex-1 w-full min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%" className="focus:outline-none">
-              {isRatioInView ? (
-                <BarChart
-                  layout="vertical"
-                  data={aiMessageRatio}
-                  margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
-                  style={{ outline: 'none' }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f8fafc" />
-                  <XAxis type="number" hide />
-                  <YAxis 
-                    dataKey="name" 
-                    type="category" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fill: '#475569', fontSize: 11, fontWeight: 600 }} 
-                    width={120}
-                    tickFormatter={(value) => value.length > 10 ? `${value.substring(0, 10)}...` : value}
-                  />
-                  <RechartsTooltip 
-                    cursor={{ fill: '#f1f5f9', radius: 8 }}
-                    content={({ active, payload, label }) => {
-                      if (active && payload && payload.length) {
-                        return (
-                          <div className="bg-white/95 backdrop-blur-md px-4 py-3 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100/50 transform transition-all">
-                            <p className="text-xs font-bold text-slate-500 mb-1">{label}</p>
-                            <div className="flex items-baseline gap-2">
-                              <p className="text-lg font-bold text-brand-text">
-                                {payload[0].value?.toLocaleString()}
-                              </p>
-                              <span className="text-[10px] font-bold text-slate-400">メッセージ</span>
-                            </div>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Bar 
-                    dataKey="messages" 
-                    name="メッセージ数" 
-                    fill="#1e1e1e" 
-                    radius={[4, 4, 4, 4]} 
-                    barSize={12} 
-                    background={{ fill: '#f1f5f9', radius: 4 }}
-                    animationDuration={1500}
-                    style={{ outline: 'none' }}
-                  >
-                    {aiMessageRatio.map((entry, index) => (
-                      <Cell key={`cell-${index}`} className="hover:opacity-80 transition-opacity duration-300 cursor-pointer" style={{ outline: 'none' }} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              ) : (
-                <div className="w-full h-full"></div>
-              )}
-            </ResponsiveContainer>
-          </div>
-        </GlassPanel>
-      </motion.section>
+          </GlassPanel>
+        </motion.section>
+      )}
 
       {/* [USER DETAILS] */}
       <motion.section 
@@ -589,64 +788,66 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
           <div className="p-6 border-b border-brand-bg">
             <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
               <UserIcon className="text-brand-text" size={24} />
-              ユーザー別利用詳細 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+              {isRegularUser ? 'あなたの利用詳細' : 'ユーザー別利用詳細'} <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
             </h3>
           </div>
-          <div className="flex flex-col md:flex-row h-auto md:h-[500px]">
+          <div className={`flex flex-col md:flex-row h-auto ${isRegularUser ? '' : 'md:h-[500px]'}`}>
             {/* Left List */}
-            <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-brand-bg overflow-y-auto bg-brand-bg/30 max-h-[300px] md:max-h-full">
-              <div className="p-4 border-b border-brand-bg sticky top-0 bg-white/90 backdrop-blur z-10">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="ユーザーを検索..."
-                    className="w-full pl-10 pr-4 py-2.5 text-sm border-none rounded-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow text-brand-text"
-                  />
+            {!isRegularUser && (
+              <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-brand-bg overflow-y-auto bg-brand-bg/30 max-h-[300px] md:max-h-full">
+                <div className="p-4 border-b border-brand-bg sticky top-0 bg-white/90 backdrop-blur z-10">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="ユーザーを検索..."
+                      className="w-full pl-10 pr-4 py-2.5 text-sm border-none rounded-full bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow text-brand-text"
+                    />
+                  </div>
+                </div>
+                <div className="divide-y divide-brand-bg">
+                  {activeUsers.map(user => (
+                    <button
+                      key={user.id}
+                      onClick={() => setSelectedUserId(user.id)}
+                      className={`w-full text-left p-4 hover:bg-white transition-colors flex items-center justify-between group focus:outline-none ${
+                        selectedUserId === user.id ? "bg-white border-l-4 border-brand-yellow shadow-sm" : "border-l-4 border-transparent"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1 pr-4">
+                        <p className={`font-bold truncate ${selectedUserId === user.id ? "text-brand-text" : "text-slate-700"}`}>{user.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                        <p className="text-[10px] text-slate-500 mt-1 truncate">
+                          よく使うAI: <span className="font-bold text-slate-600">{userDetailsMap[user.id]?.mostUsedAI || 'データなし'}</span>
+                        </p>
+                      </div>
+                      <div className="text-right flex items-center gap-2 flex-shrink-0">
+                        <div>
+                          <p className="text-sm font-bold text-brand-text">{user.messages}</p>
+                          <p className="text-[10px] text-slate-400">メッセージ</p>
+                        </div>
+                        <ChevronRight className={`w-4 h-4 transition-colors ${selectedUserId === user.id ? "text-brand-yellow" : "text-slate-300 group-hover:text-slate-500"}`} />
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
-              <div className="divide-y divide-brand-bg">
-                {activeUsers.map(user => (
-                  <button
-                    key={user.id}
-                    onClick={() => setSelectedUserId(user.id)}
-                    className={`w-full text-left p-4 hover:bg-white transition-colors flex items-center justify-between group focus:outline-none ${
-                      selectedUserId === user.id ? "bg-white border-l-4 border-brand-yellow shadow-sm" : "border-l-4 border-transparent"
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1 pr-4">
-                      <p className={`font-bold truncate ${selectedUserId === user.id ? "text-brand-text" : "text-slate-700"}`}>{user.name}</p>
-                      <p className="text-xs text-slate-400 truncate">{user.email}</p>
-                      <p className="text-[10px] text-slate-500 mt-1 truncate">
-                        よく使うAI: <span className="font-bold text-slate-600">{userDetailsMap[user.id]?.mostUsedAI || 'データなし'}</span>
-                      </p>
-                    </div>
-                    <div className="text-right flex items-center gap-2 flex-shrink-0">
-                      <div>
-                        <p className="text-sm font-bold text-brand-text">{user.messages}</p>
-                        <p className="text-[10px] text-slate-400">メッセージ</p>
-                      </div>
-                      <ChevronRight className={`w-4 h-4 transition-colors ${selectedUserId === user.id ? "text-brand-yellow" : "text-slate-300 group-hover:text-slate-500"}`} />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
 
             {/* Right Details */}
-            <div className="w-full md:w-2/3 p-8 overflow-y-auto bg-white">
+            <div className={`w-full ${isRegularUser ? '' : 'md:w-2/3'} p-8 overflow-y-auto bg-white`}>
               <div className="flex items-start mb-8">
                 <div className="flex items-center gap-5">
                   <div className="w-16 h-16 rounded-full bg-brand-bg text-brand-text flex items-center justify-center font-bold text-2xl shadow-sm border border-slate-100 flex-shrink-0">
-                    {selectedUserDetail.name.charAt(0)}
+                    {displayUserDetail.name.charAt(0)}
                   </div>
                   <div className="flex flex-col items-start">
-                    <h3 className="text-2xl font-bold text-brand-text">{selectedUserDetail.name}</h3>
-                    <p className="text-slate-500 font-medium mb-2">{selectedUserDetail.email}</p>
+                    <h3 className="text-2xl font-bold text-brand-text">{displayUserDetail.name}</h3>
+                    <p className="text-slate-500 font-medium mb-2">{displayUserDetail.email}</p>
                     <div className="flex items-center gap-2">
                       <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">よく使うAI社員:</p>
                       <span className="inline-flex items-center rounded-full bg-brand-yellow/20 text-brand-text px-2 py-0.5 text-xs font-bold">
-                        {selectedUserDetail.mostUsedAI}
+                        {displayUserDetail.mostUsedAI}
                       </span>
                     </div>
                   </div>
@@ -656,11 +857,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
               <div className="grid grid-cols-2 gap-4 mb-10">
                 <div className="bg-brand-bg/50 p-5 rounded-2xl border border-brand-bg">
                   <p className="text-xs text-slate-500 font-bold mb-1 uppercase tracking-wider">総メッセージ数</p>
-                  <p className="text-3xl font-bold text-brand-text">{selectedUserDetail.totalMessages.toLocaleString()}</p>
+                  <p className="text-3xl font-bold text-brand-text">{displayUserDetail.totalMessages.toLocaleString()}</p>
                 </div>
                 <div className="bg-brand-bg/50 p-5 rounded-2xl border border-brand-bg">
                   <p className="text-xs text-slate-500 font-bold mb-1 uppercase tracking-wider">総会話数</p>
-                  <p className="text-3xl font-bold text-brand-text">{selectedUserDetail.totalConversations.toLocaleString()}</p>
+                  <p className="text-3xl font-bold text-brand-text">{displayUserDetail.totalConversations.toLocaleString()}</p>
                 </div>
               </div>
 
@@ -669,7 +870,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
                 利用AI社員ごとの内訳
               </h4>
               <div className="space-y-6">
-                {selectedUserDetail.usage.length > 0 ? selectedUserDetail.usage.map((item: any, idx: number) => (
+                {displayUserDetail.usage.length > 0 ? displayUserDetail.usage.map((item: any, idx: number) => (
                   <div key={idx} className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="font-bold text-slate-700">{item.aiName}</span>
@@ -697,92 +898,94 @@ export const Dashboard: React.FC<DashboardProps> = ({ currentUser, initialCompan
       </motion.section>
 
       {/* [AI EMPLOYEE TABLE] */}
-      <motion.section
-        initial={{ opacity: 0, y: 30 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: "-50px" }}
-        transition={{ duration: 0.6 }}
-      >
-        <GlassPanel className="p-0 overflow-hidden">
-          <div className="p-6 border-b border-brand-bg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
-              <Bot className="text-brand-text" size={24} />
-              AI社員 利用状況一覧 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
-            </h3>
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4 text-slate-400" />
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value as any)}
-                className="bg-brand-bg/50 border border-slate-200 text-slate-600 text-sm rounded-lg focus:ring-brand-yellow focus:border-brand-yellow block p-2 font-bold focus:outline-none"
-              >
-                <option value="All">すべてのカテゴリ</option>
-                <option value="Basic">ベーシック</option>
-                <option value="Custom">カスタム</option>
-              </select>
+      {!isRegularUser && (
+        <motion.section
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.6 }}
+        >
+          <GlassPanel className="p-0 overflow-hidden">
+            <div className="p-6 border-b border-brand-bg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <h3 className="text-base sm:text-xl font-bold text-brand-text flex items-center gap-2 whitespace-nowrap">
+                <Bot className="text-brand-text" size={24} />
+                AI社員 利用状況一覧 <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1 sm:ml-2">(直近1ヶ月)</span>
+              </h3>
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-slate-400" />
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value as any)}
+                  className="bg-brand-bg/50 border border-slate-200 text-slate-600 text-sm rounded-lg focus:ring-brand-yellow focus:border-brand-yellow block p-2 font-bold focus:outline-none"
+                >
+                  <option value="All">すべてのカテゴリ</option>
+                  <option value="Basic">ベーシック</option>
+                  <option value="Custom">カスタム</option>
+                </select>
+              </div>
             </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-400 uppercase bg-brand-bg/50 border-b border-brand-bg">
-                <tr>
-                  <th className="px-6 py-4 font-bold">
-                    <button onClick={() => requestSort('name')} className="flex items-center gap-1 hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
-                      AI社員名
-                      {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
-                    </button>
-                  </th>
-                  <th className="px-6 py-4 font-bold">カテゴリ</th>
-                  <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('conversations')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
-                      会話数
-                      {sortConfig?.key === 'conversations' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
-                    </button>
-                  </th>
-                  <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('messages')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
-                      メッセージ数
-                      {sortConfig?.key === 'messages' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
-                    </button>
-                  </th>
-                  <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('avg')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
-                      平均対話回数
-                      {sortConfig?.key === 'avg' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
-                    </button>
-                  </th>
-                  <th className="px-6 py-4 font-bold text-right">
-                    <button onClick={() => requestSort('tokens')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
-                      トークン使用量
-                      {sortConfig?.key === 'tokens' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
-                    </button>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-brand-bg">
-                {sortedAndFilteredAIs.map((ai) => (
-                  <tr key={ai.id} className="hover:bg-brand-bg/30 transition-colors">
-                    <td className="px-6 py-4 font-bold text-brand-text">
-                      {ai.name}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                        ai.type === 'Basic' ? 'bg-slate-100 text-slate-600' : 'bg-brand-yellow/20 text-brand-text'
-                      }`}>
-                        {ai.type === 'Basic' ? 'ベーシック' : 'カスタム'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-600">{ai.conversations.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-600">{ai.messages.toLocaleString()}</td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-600">{(ai.messages / ai.conversations).toFixed(1)}</td>
-                    <td className="px-6 py-4 text-right font-bold text-slate-600">{formatNumber(ai.tokens)}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="text-xs text-slate-400 uppercase bg-brand-bg/50 border-b border-brand-bg">
+                  <tr>
+                    <th className="px-6 py-4 font-bold">
+                      <button onClick={() => requestSort('name')} className="flex items-center gap-1 hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
+                        AI社員名
+                        {sortConfig?.key === 'name' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 font-bold">カテゴリ</th>
+                    <th className="px-6 py-4 font-bold text-right">
+                      <button onClick={() => requestSort('conversations')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
+                        会話数
+                        {sortConfig?.key === 'conversations' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 font-bold text-right">
+                      <button onClick={() => requestSort('messages')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
+                        メッセージ数
+                        {sortConfig?.key === 'messages' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 font-bold text-right">
+                      <button onClick={() => requestSort('avg')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
+                        平均対話回数
+                        {sortConfig?.key === 'avg' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
+                      </button>
+                    </th>
+                    <th className="px-6 py-4 font-bold text-right">
+                      <button onClick={() => requestSort('tokens')} className="flex items-center justify-end gap-1 w-full hover:text-brand-text transition-colors uppercase tracking-wider focus:outline-none">
+                        トークン使用量
+                        {sortConfig?.key === 'tokens' ? (sortConfig.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : <ArrowUpDown size={14} className="opacity-50" />}
+                      </button>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </GlassPanel>
-      </motion.section>
+                </thead>
+                <tbody className="divide-y divide-brand-bg">
+                  {sortedAndFilteredAIs.map((ai) => (
+                    <tr key={ai.id} className="hover:bg-brand-bg/30 transition-colors">
+                      <td className="px-6 py-4 font-bold text-brand-text">
+                        {ai.name}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          ai.type === 'Basic' ? 'bg-slate-100 text-slate-600' : 'bg-brand-yellow/20 text-brand-text'
+                        }`}>
+                          {ai.type === 'Basic' ? 'ベーシック' : 'カスタム'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold text-slate-600">{ai.conversations.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-bold text-slate-600">{ai.messages.toLocaleString()}</td>
+                      <td className="px-6 py-4 text-right font-bold text-slate-600">{(ai.messages / ai.conversations).toFixed(1)}</td>
+                      <td className="px-6 py-4 text-right font-bold text-slate-600">{formatNumber(ai.tokens)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </GlassPanel>
+        </motion.section>
+      )}
 
     </main>
   );

@@ -48,16 +48,16 @@ export const popularAIs = [
 ];
 
 export const activeUsers = [
-  { id: 'u1', name: '山田 太郎', email: 'yamada@example.com', messages: 1250 },
-  { id: 'u2', name: '佐藤 花子', email: 'sato@example.com', messages: 1120 },
-  { id: 'u3', name: '鈴木 一郎', email: 'suzuki@example.com', messages: 980 },
-  { id: 'u4', name: '高橋 健太', email: 'takahashi@example.com', messages: 850 },
-  { id: 'u5', name: '田中 美咲', email: 'tanaka@example.com', messages: 720 },
-  { id: 'u6', name: '伊藤 誠', email: 'ito@example.com', messages: 650 },
-  { id: 'u7', name: '渡辺 結衣', email: 'watanabe@example.com', messages: 580 },
-  { id: 'u8', name: '山本 大輔', email: 'yamamoto@example.com', messages: 510 },
-  { id: 'u9', name: '中村 さくら', email: 'nakamura@example.com', messages: 450 },
-  { id: 'u10', name: '小林 翔太', email: 'kobayashi@example.com', messages: 390 },
+  { id: 'u1', name: '山田 太郎', email: 'yamada@example.com', messages: 1250, group: '営業部' },
+  { id: 'u2', name: '佐藤 花子', email: 'sato@example.com', messages: 1120, group: '開発部' },
+  { id: 'u3', name: '鈴木 一郎', email: 'suzuki@example.com', messages: 980, group: '営業部' },
+  { id: 'u4', name: '高橋 健太', email: 'takahashi@example.com', messages: 850, group: '開発部' },
+  { id: 'u5', name: '田中 美咲', email: 'tanaka@example.com', messages: 720, group: '人事部' },
+  { id: 'u6', name: '伊藤 誠', email: 'ito@example.com', messages: 650, group: '総務部' },
+  { id: 'u7', name: '渡辺 結衣', email: 'watanabe@example.com', messages: 580, group: '営業部' },
+  { id: 'u8', name: '山本 大輔', email: 'yamamoto@example.com', messages: 510, group: '開発部' },
+  { id: 'u9', name: '中村 さくら', email: 'nakamura@example.com', messages: 450, group: '人事部' },
+  { id: 'u10', name: '小林 翔太', email: 'kobayashi@example.com', messages: 390, group: '総務部' },
 ];
 
 export const tokenUsage = [
